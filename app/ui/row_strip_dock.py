@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QDockWidget, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
@@ -56,6 +58,7 @@ class RowStripDock(QDockWidget):
     def _item_for_sector(self, sector_id: int) -> QListWidgetItem:
         sbytes = self.model.read(sector_start(sector_id), SECTOR_SIZE)
         arr = sector_detailed_image(sbytes, height=220, with_ecc=False, orientation="vertical")
+        arr = np.ascontiguousarray(arr, dtype=np.uint8)
         h, w, _ = arr.shape
         img = QImage(arr.data, w, h, 3 * w, QImage.Format_RGB888)
         pm = QPixmap.fromImage(img.copy()).scaled(95, 200, Qt.KeepAspectRatio, Qt.FastTransformation)

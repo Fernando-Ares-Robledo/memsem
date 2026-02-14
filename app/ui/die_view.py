@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QMenu
@@ -41,6 +43,7 @@ class RenderTask(QRunnable):
             arr = sector_thumbnail_fast(self.bytes_data, width=48, height=32)
         else:
             arr = sector_detailed_image(self.bytes_data, height=64, with_ecc=False, bitorder=self.bitorder)
+        arr = np.ascontiguousarray(arr, dtype=np.uint8)
         h, w, _ = arr.shape
         img = QImage(arr.data, w, h, 3 * w, QImage.Format_RGB888)
         self.signals.rendered.emit(self.sector_id, self.revision, QPixmap.fromImage(img.copy()))
