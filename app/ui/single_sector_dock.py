@@ -24,8 +24,8 @@ class SingleSectorDock(QDockWidget):
     def show_sector(self, sector_id: int, bitorder: str = "msb"):
         self.title.setText(f"Sector {sector_id}")
         sbytes = self.model.read(sector_start(sector_id), SECTOR_SIZE)
-        arr = sector_detailed_image(sbytes, height=320, with_ecc=True, bitorder=bitorder, orientation="vertical")
+        arr = sector_detailed_image(sbytes, height=360, with_ecc=False, bitorder=bitorder, orientation="vertical")
         h, w, _ = arr.shape
         img = QImage(arr.data, w, h, 3 * w, QImage.Format_RGB888)
-        pm = QPixmap.fromImage(img.copy()).scaled(220, 620, Qt.KeepAspectRatio, Qt.FastTransformation)
+        pm = QPixmap.fromImage(img.copy()).scaled(240, 720, Qt.KeepAspectRatio, Qt.FastTransformation)
         self.preview.setPixmap(pm)

@@ -12,6 +12,7 @@ Desktop app (Python + PySide6) to simulate a single 32MiB NOR flash memory model
 - **Row/Column Strip View** dock: 16-sector strip shown as `0..7 | Sector | 15..8` mirrored presentation.
 - **Pick column** tool in `Tools` to click any visual column and open paper-like strip ordering.
 - **Single Sector View** dock for paper-like vertical sector inspection (easier comparison with lab imagery).
+- Improved paper-like vertical rendering bias (green base + yellow programmed bands).
 - **Deterministic green/yellow band thumbnails** and deterministic ECC overlay model.
 - **Status metrics**: item count, queued render jobs, cache hit rate.
 - **Paper-like preset** action (menu + toolbar) programs sectors 0..15 and validates deterministic hash pairs.

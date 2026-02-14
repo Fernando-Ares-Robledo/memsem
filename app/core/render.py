@@ -12,6 +12,8 @@ from .ecc_overlay import ecc_matrix_for_sector
 GREEN = np.array([35, 170, 70], dtype=np.uint8)
 YELLOW = np.array([230, 220, 70], dtype=np.uint8)
 DARK = np.array([20, 60, 30], dtype=np.uint8)
+PERIPHERY_A = np.array([190, 150, 190], dtype=np.uint8)
+PERIPHERY_B = np.array([150, 170, 210], dtype=np.uint8)
 
 
 def _mix(c1, c2, t):
@@ -34,6 +36,33 @@ def sector_state_summary(sector_bytes: bytes) -> tuple[bool, float]:
     return changed == 0, ratio
 
 
+def _vertical_like_real(page_zero: np.ndarray, bitline_zero: np.ndarray, width: int, height: int) -> np.ndarray:
+    yi = np.linspace(0, 255, height).astype(int)
+    xi = np.linspace(0, bitline_zero.size - 1, width).astype(int)
+
+    row = _smooth1d(page_zero[yi], repeats=2)[:, None]
+    col = _smooth1d(bitline_zero[xi], repeats=2)[None, :]
+
+    x = np.linspace(0, 1, width)[None, :]
+    # Main active region tends to the right half in paper-like captures.
+    right_window = np.clip((x - 0.55) / 0.35, 0, 1)
+    # faint structure on the left
+    left_window = np.clip((0.35 - x) / 0.35, 0, 1)
+
+    t = 0.06 + 0.94 * (
+        0.78 * row * (0.35 + 0.65 * right_window)
+        + 0.12 * col * right_window
+        + 0.10 * row * left_window * 0.35
+    )
+    t = np.clip(t, 0, 1)
+    img = _mix(GREEN, YELLOW, t[..., None])
+
+    # horizontal band emphasis
+    stripe_h = ((np.arange(height)[:, None] // max(1, height // 18)) % 2) * 0.09
+    img = np.clip(img.astype(np.float32) * (0.93 + stripe_h[..., None]), 0, 255).astype(np.uint8)
+    return img
+
+
 def sector_thumbnail(
     sector_bytes: bytes,
     width: int = 128,
@@ -51,32 +80,28 @@ def sector_thumbnail(
     page_zero = 1.0 - bits.mean(axis=1)  # 256 samples, one per page
     bitline_zero = 1.0 - bits.mean(axis=0)  # 2048 samples across bitlines
 
+    if orientation == "vertical":
+        return _vertical_like_real(page_zero, bitline_zero, width, height)
+
     page_zero = _smooth1d(page_zero, repeats=2)
     bitline_zero = _smooth1d(bitline_zero, repeats=2)
-
-    if orientation == "horizontal":
-        xi = np.linspace(0, 255, width).astype(int)
-        yi = np.linspace(0, bitline_zero.size - 1, height).astype(int)
-        col = page_zero[xi][None, :]
-        row = bitline_zero[yi][:, None]
-        t = np.clip(0.20 + 0.80 * (0.30 * col + 0.70 * row), 0, 1)
-    else:
-        # Paper-like: sector is tall, pages progress vertically.
-        xi = np.linspace(0, bitline_zero.size - 1, width).astype(int)
-        yi = np.linspace(0, 255, height).astype(int)
-        col = bitline_zero[xi][None, :]
-        row = page_zero[yi][:, None]
-        t = np.clip(0.18 + 0.82 * (0.55 * row + 0.45 * col), 0, 1)
+    xi = np.linspace(0, 255, width).astype(int)
+    yi = np.linspace(0, bitline_zero.size - 1, height).astype(int)
+    col = page_zero[xi][None, :]
+    row = bitline_zero[yi][:, None]
+    t = np.clip(0.20 + 0.80 * (0.30 * col + 0.70 * row), 0, 1)
 
     img = _mix(GREEN, YELLOW, t[..., None])
-
-    # Mild separators (avoid checkerboard look).
-    if orientation == "horizontal":
-        sep = ((np.arange(width)[None, :] // max(1, width // 64)) % 2) * 0.06
-    else:
-        sep = ((np.arange(height)[:, None] // max(1, height // 16)) % 2) * 0.08
+    sep = ((np.arange(width)[None, :] // max(1, width // 64)) % 2) * 0.06
     img = np.clip(img.astype(np.float32) * (0.94 + sep[..., None]), 0, 255).astype(np.uint8)
     return img
+
+
+def _periphery_strip(height: int, width: int) -> np.ndarray:
+    y = np.arange(height)[:, None]
+    pattern = (y // max(1, height // 64)) % 2
+    strip = np.where(pattern[..., None] == 1, PERIPHERY_A, PERIPHERY_B)
+    return np.repeat(strip, width, axis=1)
 
 
 def sector_detailed_image(
@@ -88,8 +113,15 @@ def sector_detailed_image(
 ) -> np.ndarray:
     width = 256 if orientation == "horizontal" else 96
     core = sector_thumbnail(sector_bytes, width=width, height=height, bitorder=bitorder, orientation=orientation)
+
+    if orientation == "vertical":
+        left = _periphery_strip(height, 6)
+        right = _periphery_strip(height, 6)
+        core = np.concatenate([left, core, right], axis=1)
+
     if not with_ecc:
         return core
+
     ecc = ecc_matrix_for_sector(sector_bytes)
     ecc_h = np.repeat(ecc, repeats=max(1, height // 10), axis=0)[:height, :]
     ecc_rgb = np.where(ecc_h[..., None] == 1, YELLOW, DARK)

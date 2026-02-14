@@ -8,4 +8,4 @@ def test_vertical_orientation_is_tall_and_narrow():
     assert h.shape[0] == 240
     assert h.shape[1] == 256
     assert v.shape[0] == 240
-    assert v.shape[1] == 96
+    assert v.shape[1] == 108
