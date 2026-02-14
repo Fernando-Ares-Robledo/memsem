@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, 
 from core.addressing import SECTOR_SIZE, sector_start
 from core.layout import BLOCK_ROWS, GAP_ROW, SceneLayout
 from core.lod_cache import LODCache
-from core.render import sector_detailed_image, sector_state_summary, sector_thumbnail
+from core.render import sector_detailed_image, sector_state_summary, sector_thumbnail, sector_thumbnail_fast
 
 
 @dataclass
@@ -38,7 +38,7 @@ class RenderTask(QRunnable):
 
     def run(self):
         if self.lod == 1:
-            arr = sector_thumbnail(self.bytes_data, width=48, height=32, bitorder=self.bitorder)
+            arr = sector_thumbnail_fast(self.bytes_data, width=48, height=32)
         else:
             arr = sector_detailed_image(self.bytes_data, height=64, with_ecc=False, bitorder=self.bitorder)
         h, w, _ = arr.shape
