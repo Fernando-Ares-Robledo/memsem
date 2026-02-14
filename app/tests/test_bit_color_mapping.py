@@ -12,5 +12,6 @@ def test_zero_and_one_bits_map_to_distinct_colors():
     d1g = np.abs(img1.astype(int) - GREEN.astype(int)).sum(axis=2).mean()
     d1y = np.abs(img1.astype(int) - YELLOW.astype(int)).sum(axis=2).mean()
 
-    assert d0g < d0y
-    assert d1y < d1g
+    # programmed zeros -> yellow, erased ones -> green
+    assert d0y < d0g
+    assert d1g < d1y
