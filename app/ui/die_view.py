@@ -7,7 +7,7 @@ from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPen, QPixm
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QMenu
 
 from core.addressing import SECTOR_SIZE, sector_start
-from core.layout import BLOCK_ROWS, GAP_ROW, SceneLayout, sector_grid_position, sector_scene_xy
+from core.layout import BLOCK_ROWS, GAP_ROW, SceneLayout, sector_grid_position
 from core.lod_cache import LODCache
 from core.render import sector_detailed_image, sector_state_summary, sector_thumbnail
 
@@ -47,8 +47,8 @@ class RenderTask(QRunnable):
 
 
 class SectorItem(QGraphicsRectItem):
-    def __init__(self, sector_id: int, rect, parent=None):
-        super().__init__(rect, parent)
+    def __init__(self, sector_id: int, x: float, y: float, w: float, h: float, parent=None):
+        super().__init__(x, y, w, h, parent)
         self.sector_id = sector_id
         self._pixmap: QPixmap | None = None
         self._selection_level: str | None = None
@@ -133,17 +133,44 @@ class DieView(QGraphicsView):
         array0_origin_y = cfg.margin
         central_strip_y = array0_origin_y + cfg.block_h + cfg.array_gap
         array1_origin_y = central_strip_y + cfg.central_strip_h + cfg.array_gap
-        self.scene.addRect(cfg.margin, central_strip_y, cfg.array_w, cfg.central_strip_h, QPen(Qt.NoPen), QBrush(QColor(40, 50, 45)))
+        self.scene.addRect(cfg.margin, central_strip_y, self._array_width(cfg), cfg.central_strip_h, QPen(Qt.NoPen), QBrush(QColor(40, 50, 45)))
         for sector_id in range(512):
-            x, y = sector_scene_xy(sector_id, cfg)
-            item = SectorItem(sector_id, (0, 0, cfg.tile_w, cfg.tile_h))
+            x, y = self._sector_scene_xy(sector_id, cfg)
+            item = SectorItem(sector_id, 0.0, 0.0, float(cfg.tile_w), float(cfg.tile_h))
             item.setPos(x, y)
             self.scene.addItem(item)
             self._items[sector_id] = item
-        self.setSceneRect(0, 0, cfg.array_w + cfg.margin * 2, array1_origin_y + cfg.block_h + cfg.margin)
+        self.setSceneRect(0, 0, self._array_width(cfg) + cfg.margin * 2, array1_origin_y + cfg.block_h + cfg.margin)
         assert len(self._items) == 512, f"sector tiles !=512: {len(self._items)}"
         self.stats_changed.emit({"sector_items": len(self._items), "jobs": 0, "hit_rate": 0.0})
         self.refresh_visible(force=True)
+
+
+    def _array_width(self, cfg: SceneLayout) -> int:
+        section_w = 2 * cfg.tile_w + cfg.tile_gap
+        return 8 * section_w + 7 * cfg.block_gap
+
+    def _sector_scene_xy(self, sector_id: int, cfg: SceneLayout) -> tuple[int, int]:
+        # Visual layout preset: 8 sections x 1 row per array (each section = 32 sectors)
+        array_idx = 0 if sector_id < 256 else 1
+        in_array = sector_id if array_idx == 0 else sector_id - 256
+        section_idx = in_array // 32  # 0..7
+        local = in_array % 32
+
+        group = local // 16
+        pos = local % 16
+        col_in_section = 1 - group  # 2 cols within 32-sector section
+        row = pos if pos < 8 else (15 - pos) + 9
+
+        section_w = 2 * cfg.tile_w + cfg.tile_gap
+        x = cfg.margin + section_idx * (section_w + cfg.block_gap) + col_in_section * (cfg.tile_w + cfg.tile_gap)
+
+        array0_origin_y = cfg.margin
+        central_strip_y = array0_origin_y + cfg.block_h + cfg.array_gap
+        array1_origin_y = central_strip_y + cfg.central_strip_h + cfg.array_gap
+        y_base = array0_origin_y if array_idx == 0 else array1_origin_y
+        y = y_base + row * (cfg.tile_h + cfg.tile_gap)
+        return x, y
 
     def set_row_pick_mode(self, enabled: bool):
         self._pick_row_mode = enabled

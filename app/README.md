@@ -5,6 +5,7 @@ Desktop app (Python + PySide6) to simulate a single 32MiB NOR flash memory model
 ## Highlights
 - **Single model only**: 32MiB, sectors/blocks/pages exactly as specified.
 - **Correct two-array layout**: Array0 (0..255) once, center strip, Array1 (256..511) once.
+- **Distribución visual actual**: 8 secciones por fila (arriba y abajo), una fila de secciones por array.
 - **One lightweight item per sector** with LOD rendering and background thumbnail jobs.
 - **Subsector click selection on canvas**: zoom in and click 32KB half / 4KB block regions.
 - **Program/Erase by selected region** from Program Dock (`Unit=selected`) and context menu.
