@@ -55,10 +55,10 @@ class RowStripDock(QDockWidget):
 
     def _item_for_sector(self, sector_id: int) -> QListWidgetItem:
         sbytes = self.model.read(sector_start(sector_id), SECTOR_SIZE)
-        arr = sector_detailed_image(sbytes, height=72, with_ecc=False)
+        arr = sector_detailed_image(sbytes, height=220, with_ecc=False, orientation="vertical")
         h, w, _ = arr.shape
         img = QImage(arr.data, w, h, 3 * w, QImage.Format_RGB888)
-        pm = QPixmap.fromImage(img.copy()).scaled(180, 80, Qt.KeepAspectRatio, Qt.FastTransformation)
+        pm = QPixmap.fromImage(img.copy()).scaled(95, 200, Qt.KeepAspectRatio, Qt.FastTransformation)
         it = QListWidgetItem(f"S{sector_id}")
         it.setData(Qt.UserRole, sector_id)
         it.setIcon(QIcon(pm))

@@ -12,6 +12,7 @@ from .inspector_dock import InspectorDock
 from .memory_map_dock import MemoryMapDock
 from .program_dock import ProgramDock
 from .row_strip_dock import RowStripDock
+from .single_sector_dock import SingleSectorDock
 
 
 class MainWindow(QMainWindow):
@@ -28,11 +29,13 @@ class MainWindow(QMainWindow):
         self.program = ProgramDock(self.model)
         self.memmap = MemoryMapDock()
         self.row_strip = RowStripDock(self.model)
+        self.single_sector = SingleSectorDock(self.model)
 
         self.addDockWidget(Qt.RightDockWidgetArea, self.inspector)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.program)
         self.addDockWidget(Qt.RightDockWidgetArea, self.memmap)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.row_strip)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.single_sector)
 
         self.program.changed.connect(self.on_memory_changed)
         self.program.jump_requested.connect(self.jump_to)
@@ -113,6 +116,7 @@ class MainWindow(QMainWindow):
             self._last_selection = info
             self.program.set_selected_region(info)
             self.inspector.update_for_selection(info)
+            self.single_sector.show_sector(int(info["sector_id"]), self.die.bitorder)
 
     def on_memory_changed(self, region: dict):
         start = region["start"]
@@ -135,6 +139,7 @@ class MainWindow(QMainWindow):
         info = {"level": "sector", "sector_id": sid, "start": sid << 16, "size": 0x10000, "end": (sid << 16) + 0xFFFF}
         self.program.set_selected_region(info)
         self.inspector.update_for_selection(info)
+        self.single_sector.show_sector(sid, self.die.bitorder)
 
     def save_project(self):
         path, _ = QFileDialog.getSaveFileName(self, "Save Project", filter="Project (*.json)")

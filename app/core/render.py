@@ -23,19 +23,27 @@ def sector_state_summary(sector_bytes: bytes) -> tuple[bool, float]:
     return changed == 0, ratio
 
 
-def sector_thumbnail(sector_bytes: bytes, width: int = 128, height: int = 32, bitorder: str = "msb") -> np.ndarray:
+def sector_thumbnail(sector_bytes: bytes, width: int = 128, height: int = 32, bitorder: str = "msb", orientation: str = "horizontal") -> np.ndarray:
     arr = np.frombuffer(sector_bytes, dtype=np.uint8).reshape(256, 256)
     bits = np.unpackbits(arr, axis=1, bitorder="big" if bitorder == "msb" else "little")
 
-    # Column signal (dataset/page-driven): each page contributes one vertical stripe.
-    col_signal = bits.mean(axis=1)  # 256 values in [0..1]
-    col_idx = np.linspace(0, 255, width).astype(int)
-    col = col_signal[col_idx][None, :]
+    if orientation not in ("horizontal", "vertical"):
+        raise ValueError("orientation must be horizontal|vertical")
 
-    # Row signal (bit-plane-driven): strong horizontal bands from bit positions.
-    row_signal = bits.mean(axis=0)  # 2048 values in [0..1]
-    row_idx = np.linspace(0, row_signal.size - 1, height).astype(int)
-    row = row_signal[row_idx][:, None]
+    col_signal = bits.mean(axis=1)  # page-driven
+    row_signal = bits.mean(axis=0)  # bitplane-driven
+
+    if orientation == "horizontal":
+        col_idx = np.linspace(0, 255, width).astype(int)
+        row_idx = np.linspace(0, row_signal.size - 1, height).astype(int)
+        col = col_signal[col_idx][None, :]
+        row = row_signal[row_idx][:, None]
+    else:
+        # Paper-like orientation: page progression on vertical axis.
+        col_idx = np.linspace(0, row_signal.size - 1, width).astype(int)
+        row_idx = np.linspace(0, 255, height).astype(int)
+        col = row_signal[col_idx][None, :]
+        row = col_signal[row_idx][:, None]
 
     # 0->GREEN, 1->YELLOW while preserving clear horizontal banding.
     t = np.clip(0.08 + 0.92 * (0.35 * col + 0.65 * row), 0, 1)
@@ -48,8 +56,9 @@ def sector_thumbnail(sector_bytes: bytes, width: int = 128, height: int = 32, bi
     return img
 
 
-def sector_detailed_image(sector_bytes: bytes, height: int = 180, with_ecc: bool = True, bitorder: str = "msb") -> np.ndarray:
-    core = sector_thumbnail(sector_bytes, width=256, height=height, bitorder=bitorder)
+def sector_detailed_image(sector_bytes: bytes, height: int = 180, with_ecc: bool = True, bitorder: str = "msb", orientation: str = "horizontal") -> np.ndarray:
+    width = 256 if orientation == "horizontal" else 96
+    core = sector_thumbnail(sector_bytes, width=width, height=height, bitorder=bitorder, orientation=orientation)
     if not with_ecc:
         return core
     ecc = ecc_matrix_for_sector(sector_bytes)
