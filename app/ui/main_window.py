@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QToolBar
+from PySide6.QtWidgets import QFileDialog, QLabel, QMainWindow, QSpinBox, QToolBar
 
 from core.model import MemoryModel
 from core.preset import apply_paper_like_preset, validate_paper_like_hashes
@@ -68,6 +68,14 @@ class MainWindow(QMainWindow):
 
         toolbar = QToolBar("Main", self)
         toolbar.addAction(QAction("Preset", self, triggered=self.load_paper_like_preset))
+
+        rows_label = QLabel("Rows/col", self)
+        rows_spin = QSpinBox(self)
+        rows_spin.setRange(1, 16)
+        rows_spin.setValue(self.die.visible_rows_per_column)
+        rows_spin.valueChanged.connect(self.die.set_visible_rows_per_column)
+        toolbar.addWidget(rows_label)
+        toolbar.addWidget(rows_spin)
         self.addToolBar(toolbar)
 
         for deg in [0, 90, 180, 270]:

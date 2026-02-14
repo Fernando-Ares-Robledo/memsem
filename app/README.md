@@ -17,6 +17,7 @@ Desktop app (Python + PySide6) to simulate a single 32MiB NOR flash memory model
 - **Status metrics**: item count, queued render jobs, cache hit rate.
 - **Paper-like preset** action (menu + toolbar) programs sectors 0..15 and validates deterministic hash pairs.
 - **Direct sector selection** by Sector ID (0..511) without typing memory addresses (address jump remains available).
+- Toolbar control **Rows/col** to choose how many sectors are visible in each column (1..16).
 
 ## Run
 ```bash

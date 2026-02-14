@@ -9,7 +9,7 @@ from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPen, QPixm
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QMenu
 
 from core.addressing import SECTOR_SIZE, sector_start
-from core.layout import BLOCK_ROWS, GAP_ROW, SceneLayout
+from core.layout import SceneLayout
 from core.lod_cache import LODCache
 from core.render import sector_detailed_image, sector_state_summary, sector_thumbnail, sector_thumbnail_fast
 
@@ -130,52 +130,74 @@ class DieView(QGraphicsView):
         self._selection: Selection | None = None
         self._pick_row_mode = False
         self._pick_col_mode = False
+        self.visible_rows_per_column = 16
+        self._strip_item = None
         self._build_scene()
 
     def _build_scene(self):
         self.scene.clear()
         cfg = self.layout_cfg
-        array0_origin_y = cfg.margin
-        central_strip_y = array0_origin_y + cfg.block_h + cfg.array_gap
-        array1_origin_y = central_strip_y + cfg.central_strip_h + cfg.array_gap
-        self.scene.addRect(cfg.margin, central_strip_y, self._array_width(cfg), cfg.central_strip_h, QPen(Qt.NoPen), QBrush(QColor(40, 50, 45)))
+        _, central_strip_y, _, _ = self._layout_geometry(cfg)
+        self._strip_item = self.scene.addRect(cfg.margin, central_strip_y, self._array_width(cfg), cfg.central_strip_h, QPen(Qt.NoPen), QBrush(QColor(40, 50, 45)))
         for sector_id in range(512):
-            x, y = self._sector_scene_xy(sector_id, cfg)
+            x, y = self._sector_scene_xy(cfg, sector_id)
             item = SectorItem(sector_id, 0.0, 0.0, float(cfg.tile_w), float(cfg.tile_h))
             item.setPos(x, y)
             self.scene.addItem(item)
             self._items[sector_id] = item
-        self.setSceneRect(0, 0, self._array_width(cfg) + cfg.margin * 2, array1_origin_y + cfg.block_h + cfg.margin)
+        self._apply_visibility_and_layout()
         assert len(self._items) == 512, f"sector tiles !=512: {len(self._items)}"
         self.stats_changed.emit({"sector_items": len(self._items), "jobs": 0, "hit_rate": 0.0})
         self.refresh_visible(force=True)
 
 
+
+    def _layout_geometry(self, cfg: SceneLayout) -> tuple[int, int, int, int]:
+        row_pitch = cfg.tile_h + cfg.tile_gap
+        vis_rows = max(1, min(16, int(self.visible_rows_per_column)))
+        array_h = vis_rows * row_pitch - cfg.tile_gap
+        array0_origin_y = cfg.margin
+        central_strip_y = array0_origin_y + array_h + cfg.array_gap
+        array1_origin_y = central_strip_y + cfg.central_strip_h + cfg.array_gap
+        return array0_origin_y, central_strip_y, array1_origin_y, row_pitch
+
+    def _apply_visibility_and_layout(self):
+        cfg = self.layout_cfg
+        array0_origin_y, central_strip_y, array1_origin_y, row_pitch = self._layout_geometry(cfg)
+        vis_rows = max(1, min(16, int(self.visible_rows_per_column)))
+        for sector_id, item in self._items.items():
+            x, y, row = self._sector_scene_xy(cfg, sector_id, include_row=True)
+            y_base = array0_origin_y if sector_id < 256 else array1_origin_y
+            item.setPos(x, y_base + row * row_pitch)
+            item.setVisible(row < vis_rows)
+        if self._strip_item is not None:
+            self._strip_item.setRect(cfg.margin, central_strip_y, self._array_width(cfg), cfg.central_strip_h)
+        array_h = vis_rows * row_pitch - cfg.tile_gap
+        self.setSceneRect(0, 0, self._array_width(cfg) + cfg.margin * 2, array1_origin_y + array_h + cfg.margin)
+
+    def set_visible_rows_per_column(self, rows: int):
+        self.visible_rows_per_column = max(1, min(16, int(rows)))
+        self._apply_visibility_and_layout()
+        self.refresh_visible()
+
     def _array_width(self, cfg: SceneLayout) -> int:
         section_w = 2 * cfg.tile_w + cfg.tile_gap
         return 8 * section_w + 7 * cfg.block_gap
 
-    def _sector_scene_xy(self, sector_id: int, cfg: SceneLayout) -> tuple[int, int]:
-        # Visual layout preset: 8 sections x 1 row per array (each section = 32 sectors)
+    def _sector_scene_xy(self, cfg: SceneLayout, sector_id: int, include_row: bool = False):
+        # 8 section columns, 2 physical columns per section, 16 rows contiguous.
         array_idx = 0 if sector_id < 256 else 1
         in_array = sector_id if array_idx == 0 else sector_id - 256
-        section_idx = in_array // 32  # 0..7
+        section_idx = in_array // 32
         local = in_array % 32
-
         group = local // 16
-        pos = local % 16
-        col_in_section = 1 - group  # 2 cols within 32-sector section
-        row = pos if pos < 8 else (15 - pos) + 9
+        row = local % 16
+        col_in_section = 1 - group
 
         section_w = 2 * cfg.tile_w + cfg.tile_gap
         x = cfg.margin + section_idx * (section_w + cfg.block_gap) + col_in_section * (cfg.tile_w + cfg.tile_gap)
-
-        array0_origin_y = cfg.margin
-        central_strip_y = array0_origin_y + cfg.block_h + cfg.array_gap
-        array1_origin_y = central_strip_y + cfg.central_strip_h + cfg.array_gap
-        y_base = array0_origin_y if array_idx == 0 else array1_origin_y
-        y = y_base + row * (cfg.tile_h + cfg.tile_gap)
-        return x, y
+        y = row * (cfg.tile_h + cfg.tile_gap)
+        return (x, y, row) if include_row else (x, y)
 
     def set_row_pick_mode(self, enabled: bool):
         self._pick_row_mode = enabled
@@ -196,8 +218,9 @@ class DieView(QGraphicsView):
             local = scene_pos - item.scenePos()
             if self._pick_row_mode or self._pick_col_mode:
                 array_idx, section_idx, col_in_section, row = self._section_coords(sec_id)
-                if self._pick_row_mode and row != GAP_ROW:
-                    self.row_picked.emit(array_idx, row)
+                if self._pick_row_mode:
+                    row_for_strip = row if row < 8 else row + 1
+                    self.row_picked.emit(array_idx, row_for_strip)
                     self._pick_row_mode = False
                 if self._pick_col_mode:
                     self.column_picked.emit(array_idx, section_idx, col_in_section)
@@ -218,7 +241,7 @@ class DieView(QGraphicsView):
         group = local // 16
         pos = local % 16
         col_in_section = 1 - group
-        row = pos if pos < 8 else (15 - pos) + 9
+        row = pos
         return array_idx, section_idx, col_in_section, row
 
     def _show_context_menu(self, sector_id: int, local, global_pos):
@@ -313,6 +336,8 @@ class DieView(QGraphicsView):
     def refresh_visible(self, force: bool = False):
         lod = self._current_lod()
         for sector_id, item in self._items.items():
+            if not item.isVisible():
+                continue
             if not force and not self._is_item_visible(item):
                 continue
             rev = self._revisions[sector_id]
