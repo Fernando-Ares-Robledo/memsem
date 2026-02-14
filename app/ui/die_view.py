@@ -7,7 +7,7 @@ from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPen, QPixm
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QMenu
 
 from core.addressing import SECTOR_SIZE, sector_start
-from core.layout import BLOCK_ROWS, GAP_ROW, SceneLayout, sector_grid_position
+from core.layout import BLOCK_ROWS, GAP_ROW, SceneLayout
 from core.lod_cache import LODCache
 from core.render import sector_detailed_image, sector_state_summary, sector_thumbnail
 
@@ -97,6 +97,7 @@ class SectorItem(QGraphicsRectItem):
 class DieView(QGraphicsView):
     selection_changed = Signal(dict)
     row_picked = Signal(int, int)
+    column_picked = Signal(int, int, int)
     stats_changed = Signal(dict)
 
     def __init__(self, model, parent=None):
@@ -125,6 +126,7 @@ class DieView(QGraphicsView):
         self.show_ecc = True
         self._selection: Selection | None = None
         self._pick_row_mode = False
+        self._pick_col_mode = False
         self._build_scene()
 
     def _build_scene(self):
@@ -175,6 +177,9 @@ class DieView(QGraphicsView):
     def set_row_pick_mode(self, enabled: bool):
         self._pick_row_mode = enabled
 
+    def set_column_pick_mode(self, enabled: bool):
+        self._pick_col_mode = enabled
+
     def wheelEvent(self, event):
         factor = 1.12 if event.angleDelta().y() > 0 else 1 / 1.12
         self.scale(factor, factor)
@@ -186,16 +191,32 @@ class DieView(QGraphicsView):
             sec_id = item.sector_id
             scene_pos = self.mapToScene(event.pos())
             local = scene_pos - item.scenePos()
-            if self._pick_row_mode:
-                array_idx, row, _ = sector_grid_position(sec_id)
-                if row != GAP_ROW:
+            if self._pick_row_mode or self._pick_col_mode:
+                array_idx, section_idx, col_in_section, row = self._section_coords(sec_id)
+                if self._pick_row_mode and row != GAP_ROW:
                     self.row_picked.emit(array_idx, row)
-                self._pick_row_mode = False
+                    self._pick_row_mode = False
+                if self._pick_col_mode:
+                    self.column_picked.emit(array_idx, section_idx, col_in_section)
+                    self._pick_col_mode = False
+
             if event.button() == Qt.RightButton:
                 self._show_context_menu(sec_id, local, event.globalPosition().toPoint())
                 return
             self._update_selection(sec_id, local)
         super().mousePressEvent(event)
+
+
+    def _section_coords(self, sector_id: int) -> tuple[int, int, int, int]:
+        array_idx = 0 if sector_id < 256 else 1
+        in_array = sector_id if array_idx == 0 else sector_id - 256
+        section_idx = in_array // 32
+        local = in_array % 32
+        group = local // 16
+        pos = local % 16
+        col_in_section = 1 - group
+        row = pos if pos < 8 else (15 - pos) + 9
+        return array_idx, section_idx, col_in_section, row
 
     def _show_context_menu(self, sector_id: int, local, global_pos):
         menu = QMenu(self)

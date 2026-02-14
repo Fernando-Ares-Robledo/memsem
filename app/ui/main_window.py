@@ -39,6 +39,7 @@ class MainWindow(QMainWindow):
         self.program.sector_selected.connect(self.jump_to_sector)
         self.die.selection_changed.connect(self.on_selection)
         self.die.row_picked.connect(self.row_strip.show_row)
+        self.die.column_picked.connect(self.row_strip.show_column)
         self.row_strip.sector_activated.connect(self.jump_to_sector)
         self.die.stats_changed.connect(self.on_stats)
 
@@ -74,6 +75,10 @@ class MainWindow(QMainWindow):
         pick_row = QAction("Pick row", self)
         pick_row.triggered.connect(lambda: self.die.set_row_pick_mode(True))
         mtools.addAction(pick_row)
+
+        pick_col = QAction("Pick column", self)
+        pick_col.triggered.connect(lambda: self.die.set_column_pick_mode(True))
+        mtools.addAction(pick_col)
 
     def load_paper_like_preset(self):
         apply_paper_like_preset(self.model)

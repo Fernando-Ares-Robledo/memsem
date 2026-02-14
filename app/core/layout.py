@@ -116,3 +116,31 @@ def row_strip_order(array_idx: int, row: int) -> tuple[list[int], list[int]]:
     left = ids[:8]
     right = list(reversed(ids[8:]))
     return left, right
+
+
+def section32_row_to_pos(row: int) -> int:
+    if row == GAP_ROW or not (0 <= row < BLOCK_ROWS):
+        raise ValueError("row must be 0..16 excluding 8")
+    return row if row < 8 else 15 - (row - 9)
+
+
+def column_sector_ids_8x2(array_idx: int, section_idx: int, col_in_section: int) -> list[int]:
+    """Return 16 sectors for one selected visual column in the 8x2 layout.
+
+    Ordering is paper-like: local pos 0..7 then 15..8.
+    """
+    if array_idx not in (0, 1):
+        raise ValueError("array_idx must be 0 or 1")
+    if not (0 <= section_idx < 8):
+        raise ValueError("section_idx must be 0..7")
+    if col_in_section not in (0, 1):
+        raise ValueError("col_in_section must be 0 or 1")
+
+    base = 0 if array_idx == 0 else ARRAY_SECTORS
+    group = 1 - col_in_section  # inverse of visual mapping col=1-group
+    ids = []
+    for row in list(range(0, 8)) + list(range(9, 17)):
+        pos = section32_row_to_pos(row)
+        local_id = group * 16 + pos
+        ids.append(base + section_idx * 32 + local_id)
+    return ids
