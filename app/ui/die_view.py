@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
-from PySide6.QtCore import QRectF
 from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView, QMenu
 
@@ -48,8 +47,8 @@ class RenderTask(QRunnable):
 
 
 class SectorItem(QGraphicsRectItem):
-    def __init__(self, sector_id: int, rect, parent=None):
-        super().__init__(rect, parent)
+    def __init__(self, sector_id: int, x: float, y: float, w: float, h: float, parent=None):
+        super().__init__(x, y, w, h, parent)
         self.sector_id = sector_id
         self._pixmap: QPixmap | None = None
         self._selection_level: str | None = None
@@ -137,7 +136,7 @@ class DieView(QGraphicsView):
         self.scene.addRect(cfg.margin, central_strip_y, self._array_width(cfg), cfg.central_strip_h, QPen(Qt.NoPen), QBrush(QColor(40, 50, 45)))
         for sector_id in range(512):
             x, y = self._sector_scene_xy(sector_id, cfg)
-            item = SectorItem(sector_id, QRectF(0, 0, cfg.tile_w, cfg.tile_h))
+            item = SectorItem(sector_id, 0.0, 0.0, float(cfg.tile_w), float(cfg.tile_h))
             item.setPos(x, y)
             self.scene.addItem(item)
             self._items[sector_id] = item
