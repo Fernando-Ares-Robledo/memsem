@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -19,6 +20,7 @@ from core.utils import parse_int
 class ProgramDock(QDockWidget):
     changed = Signal(dict)
     jump_requested = Signal(int)
+    sector_selected = Signal(int)
 
     def __init__(self, model, parent=None):
         super().__init__("Program / Erase", parent)
@@ -35,12 +37,19 @@ class ProgramDock(QDockWidget):
         self.seg_type = QComboBox(); self.seg_type.addItems(["fill", "hex", "text"])
         self.seg_size = QLineEdit("0x100")
         self.seg_value = QLineEdit("0xAA")
+
+        self.sector_id = QSpinBox(); self.sector_id.setRange(0, 511)
+        b_sel_sector = QPushButton("Select sector")
+        b_sel_sector.clicked.connect(lambda: self.sector_selected.emit(self.sector_id.value()))
+
         form.addRow("Unit", self.unit)
         form.addRow("Address", self.addr)
         form.addRow("Size (range)", self.size)
         form.addRow("Segment type", self.seg_type)
         form.addRow("Segment size", self.seg_size)
         form.addRow("Segment value", self.seg_value)
+        form.addRow("Sector ID", self.sector_id)
+        form.addRow("", b_sel_sector)
         outer.addLayout(form)
 
         buttons = QHBoxLayout()
@@ -57,10 +66,15 @@ class ProgramDock(QDockWidget):
         outer.addWidget(self.log)
         self.setWidget(body)
 
+    def append_log(self, text: str):
+        self.log.append(text)
+
     def set_selected_region(self, info: dict):
         if "start" not in info or "size" not in info:
             return
         self.selected_region = dict(info)
+        if "sector_id" in info:
+            self.sector_id.setValue(int(info["sector_id"]))
         self.addr.setText(f"0x{info['start']:X}")
         self.size.setText(f"0x{info['size']:X}")
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QDockWidget, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget

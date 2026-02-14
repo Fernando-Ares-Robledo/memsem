@@ -11,6 +11,8 @@ Desktop app (Python + PySide6) to simulate a single 32MiB NOR flash memory model
 - **Row Strip View** dock: 16-sector strip shown as `0..7 | Sector | 15..8` mirrored presentation.
 - **Deterministic green/yellow band thumbnails** and deterministic ECC overlay model.
 - **Status metrics**: item count, queued render jobs, cache hit rate.
+- **Paper-like preset** action (menu + toolbar) programs sectors 0..15 and validates deterministic hash pairs.
+- **Direct sector selection** by Sector ID (0..511) without typing memory addresses (address jump remains available).
 
 ## Run
 ```bash

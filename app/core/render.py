@@ -7,8 +7,8 @@ import numpy as np
 
 from .ecc_overlay import ecc_matrix_for_sector
 
-GREEN = np.array([50, 170, 80], dtype=np.uint8)
-YELLOW = np.array([220, 210, 80], dtype=np.uint8)
+GREEN = np.array([25, 150, 55], dtype=np.uint8)
+YELLOW = np.array([235, 220, 40], dtype=np.uint8)
 DARK = np.array([20, 60, 30], dtype=np.uint8)
 
 
@@ -26,20 +26,20 @@ def sector_state_summary(sector_bytes: bytes) -> tuple[bool, float]:
 def sector_thumbnail(sector_bytes: bytes, width: int = 128, height: int = 32, bitorder: str = "msb") -> np.ndarray:
     arr = np.frombuffer(sector_bytes, dtype=np.uint8).reshape(256, 256)
     bits = np.unpackbits(arr, axis=1, bitorder="big" if bitorder == "msb" else "little")
-    band = bits.reshape(256, 256, 8).mean(axis=2)
-    col_energy = band.mean(axis=1)
-    row_energy = band.mean(axis=0)
+    bit_density = bits.mean(axis=1)
+    byte_energy = arr.mean(axis=1) / 255.0
 
     x = np.linspace(0, 255, width).astype(int)
-    y = np.linspace(0, row_energy.size - 1, height).astype(int)
+    y = np.linspace(0, bits.shape[1] - 1, height).astype(int)
 
-    base = col_energy[x][None, :]
-    bands = row_energy[y][:, None]
-    t = np.clip(0.2 + 0.8 * (0.6 * base + 0.4 * bands), 0, 1)
+    base = (0.65 * bit_density[x] + 0.35 * byte_energy[x])[None, :]
+    horiz = bits[:, y].mean(axis=0)[:, None]
+    t = np.clip(0.1 + 0.9 * (0.55 * base + 0.45 * horiz), 0, 1)
     img = _mix(GREEN, YELLOW, t[..., None])
 
-    stripe = ((np.arange(width)[None, :] // max(1, width // 64)) % 2) * 0.08
-    img = np.clip(img.astype(np.float32) * (0.92 + stripe[..., None]), 0, 255).astype(np.uint8)
+    dataset_sep = ((np.arange(width)[None, :] // max(1, width // 64)) % 2) * 0.16
+    banding = ((np.arange(height)[:, None] // max(1, height // 8)) % 2) * 0.07
+    img = np.clip(img.astype(np.float32) * (0.80 + dataset_sep[..., None] + banding[..., None]), 0, 255).astype(np.uint8)
     return img
 
 

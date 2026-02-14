@@ -230,6 +230,22 @@ class DieView(QGraphicsView):
             self.zoom_to_sector(item.sector_id)
         super().mouseDoubleClickEvent(event)
 
+
+    def focus_sectors(self, sector_ids, target_lod: int = 1):
+        ids = list(sector_ids)
+        if not ids:
+            return
+        rect = self._items[ids[0]].sceneBoundingRect()
+        for sid in ids[1:]:
+            rect = rect.united(self._items[sid].sceneBoundingRect())
+        self.fitInView(rect.adjusted(-30, -30, 30, 30), Qt.KeepAspectRatio)
+        scale = self.transform().m11()
+        if target_lod == 1 and scale >= 2.0:
+            self.scale(1.7 / max(scale, 1e-6), 1.7 / max(scale, 1e-6))
+        elif target_lod == 1 and scale < 0.45:
+            self.scale(0.8 / max(scale, 1e-6), 0.8 / max(scale, 1e-6))
+        self.refresh_visible()
+
     def zoom_to_sector(self, sector_id: int):
         rect = self._items[sector_id].sceneBoundingRect()
         self.fitInView(rect.adjusted(-20, -20, 20, 20), Qt.KeepAspectRatio)
