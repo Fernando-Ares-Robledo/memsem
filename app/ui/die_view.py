@@ -74,7 +74,7 @@ class SectorItem(QGraphicsRectItem):
             painter.drawRect(self.rect())
 
         lod = option.levelOfDetailFromTransform(painter.worldTransform())
-        if lod > 4.0:
+        if lod > 10.0:
             r = self.rect()
             painter.setPen(QPen(QColor(210, 230, 200, 120), 0.5))
             painter.drawLine(r.left(), r.top() + r.height() / 2, r.right(), r.top() + r.height() / 2)

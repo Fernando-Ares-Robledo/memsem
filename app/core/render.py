@@ -27,18 +27,24 @@ def sector_thumbnail(sector_bytes: bytes, width: int = 128, height: int = 32, bi
     arr = np.frombuffer(sector_bytes, dtype=np.uint8).reshape(256, 256)
     bits = np.unpackbits(arr, axis=1, bitorder="big" if bitorder == "msb" else "little")
 
-    # Sample the 256x2048 bit-plane into requested thumbnail size using nearest bins.
-    x = np.linspace(0, 255, width).astype(int)
-    y = np.linspace(0, bits.shape[1] - 1, height).astype(int)
-    sampled = bits[x][:, y].T  # (height, width), values in {0,1}
+    # Column signal (dataset/page-driven): each page contributes one vertical stripe.
+    col_signal = bits.mean(axis=1)  # 256 values in [0..1]
+    col_idx = np.linspace(0, 255, width).astype(int)
+    col = col_signal[col_idx][None, :]
 
-    # Explicit 0/1 color map for visual debugging: 0->green, 1->yellow.
-    img = np.where(sampled[..., None] == 1, YELLOW, GREEN).astype(np.uint8)
+    # Row signal (bit-plane-driven): strong horizontal bands from bit positions.
+    row_signal = bits.mean(axis=0)  # 2048 values in [0..1]
+    row_idx = np.linspace(0, row_signal.size - 1, height).astype(int)
+    row = row_signal[row_idx][:, None]
 
-    # Add deterministic separators so datasets/bands remain easy to perceive.
-    dataset_sep = ((np.arange(width)[None, :] // max(1, width // 64)) % 2) * 0.12
-    banding = ((np.arange(height)[:, None] // max(1, height // 8)) % 2) * 0.08
-    img = np.clip(img.astype(np.float32) * (0.86 + dataset_sep[..., None] + banding[..., None]), 0, 255).astype(np.uint8)
+    # 0->GREEN, 1->YELLOW while preserving clear horizontal banding.
+    t = np.clip(0.08 + 0.92 * (0.35 * col + 0.65 * row), 0, 1)
+    img = _mix(GREEN, YELLOW, t[..., None])
+
+    # Deterministic engraving-like stripes and dataset separators.
+    stripe_h = ((np.arange(height)[:, None] // max(1, height // 12)) % 2) * 0.20
+    stripe_v = ((np.arange(width)[None, :] // max(1, width // 64)) % 2) * 0.10
+    img = np.clip(img.astype(np.float32) * (0.78 + stripe_h[..., None] + stripe_v[..., None]), 0, 255).astype(np.uint8)
     return img
 
 
