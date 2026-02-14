@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -18,19 +17,19 @@ from core.utils import parse_int
 
 
 class ProgramDock(QDockWidget):
-    changed = Signal()
+    changed = Signal(dict)
     jump_requested = Signal(int)
 
     def __init__(self, model, parent=None):
         super().__init__("Program / Erase", parent)
         self.model = model
-        self.selection_sector = 0
+        self.selected_region = {"start": 0, "size": 0x10000, "level": "sector", "sector_id": 0}
         body = QWidget()
         outer = QVBoxLayout(body)
 
         form = QFormLayout()
         self.unit = QComboBox()
-        self.unit.addItems(["sector64", "block32", "block4", "page256", "range"])
+        self.unit.addItems(["selected", "sector64", "block32", "block4", "page256", "range"])
         self.addr = QLineEdit("0x0")
         self.size = QLineEdit("0x100")
         self.seg_type = QComboBox(); self.seg_type.addItems(["fill", "hex", "text"])
@@ -58,11 +57,17 @@ class ProgramDock(QDockWidget):
         outer.addWidget(self.log)
         self.setWidget(body)
 
-    def set_selection_sector(self, sector_id: int):
-        self.selection_sector = sector_id
+    def set_selected_region(self, info: dict):
+        if "start" not in info or "size" not in info:
+            return
+        self.selected_region = dict(info)
+        self.addr.setText(f"0x{info['start']:X}")
+        self.size.setText(f"0x{info['size']:X}")
 
     def _resolve_region(self):
         u = self.unit.currentText()
+        if u == "selected":
+            return self.selected_region["start"], self.selected_region["size"]
         addr = parse_int(self.addr.text())
         if u == "sector64":
             start = (addr >> 16) << 16; size = 0x10000
@@ -81,13 +86,13 @@ class ProgramDock(QDockWidget):
         seg = {"type": self.seg_type.currentText(), "size_bytes": parse_int(self.seg_size.text()), "value": self.seg_value.text()}
         self.model.program(start, size, [seg], enforce_nor=True)
         self.log.append(f"Programmed 0x{start:X} size 0x{size:X}")
-        self.changed.emit()
+        self.changed.emit({"start": start, "size": size})
 
     def _erase(self):
         start, size = self._resolve_region()
         self.model.erase(start, size)
         self.log.append(f"Erased 0x{start:X} size 0x{size:X}")
-        self.changed.emit()
+        self.changed.emit({"start": start, "size": size})
 
     def _jump(self):
         self.jump_requested.emit(parse_int(self.addr.text()))

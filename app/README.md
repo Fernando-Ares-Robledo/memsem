@@ -2,16 +2,15 @@
 
 Desktop app (Python + PySide6) to simulate a single 32MiB NOR flash memory model and visualize it as two physical-looking arrays with folded 64-sector grouping.
 
-## Features
-- Single model only: 32MiB, sectors/blocks/pages as requested.
-- One unified die canvas: Array0 (top), decorative center strip, Array1 (bottom).
-- Folded 64-sector block layout with gap row.
-- Program/erase by 64KB sector, 32KB block, 4KB block, 256B page, and arbitrary range.
-- LOD sector rendering with deterministic green/yellow band-like visuals.
-- Sector dataset view (256 datasets/pages) and simulated ECC overlay logic (10 bits/page).
-- Jump-to address, click selection, double-click drill-down to sector.
-- Rotation controls (0/90/180/270).
-- Save/load project (.json + .bin), export PNG from current view.
+## Highlights
+- **Single model only**: 32MiB, sectors/blocks/pages exactly as specified.
+- **Correct two-array layout**: Array0 (0..255) once, center strip, Array1 (256..511) once.
+- **One lightweight item per sector** with LOD rendering and background thumbnail jobs.
+- **Subsector click selection on canvas**: zoom in and click 32KB half / 4KB block regions.
+- **Program/Erase by selected region** from Program Dock (`Unit=selected`) and context menu.
+- **Row Strip View** dock: 16-sector strip shown as `0..7 | Sector | 15..8` mirrored presentation.
+- **Deterministic green/yellow band thumbnails** and deterministic ECC overlay model.
+- **Status metrics**: item count, queued render jobs, cache hit rate.
 
 ## Run
 ```bash
