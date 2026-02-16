@@ -29,7 +29,9 @@ def segment_to_bytes(seg_type: str, value, size_bytes: int) -> bytes:
     elif seg_type == "hex":
         payload = _parse_hex_stream(str(value))
     elif seg_type == "fill":
-        v = int(value)
+        text = str(value).strip()
+        # Accept both decimal (170) and prefixed bases (0xAA, 0b1010, 0o12).
+        v = int(text, 0) if text else 0
         if not 0 <= v <= 255:
             raise ValueError("fill value must be 0..255")
         payload = bytes([v])
