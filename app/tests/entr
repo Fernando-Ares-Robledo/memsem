@@ -1,0 +1,667 @@
+En este repo hay “mucho” porque está pensado para compilarse en entornos muy distintos (userland Linux, kernel-ish, Android NDK, bare-metal, etc.) y por eso separa **API pública**, **código core** y **capas de portabilidad**.
+
+### Vista rápida del árbol (lo importante)
+
+En la raíz tienes esto: `arch/`, `doc/`, `src/`, `tests/` y varios ficheros “de entrada” como `jitterentropy.h`, `jitterentropy-base-user.h`, `Makefile`, `CMakeLists.txt`, `README.md`, etc. ([GitHub][1])
+
+Un mapa mental útil:
+
+* **`jitterentropy.h`** → *lo que tú incluyes* (API pública).
+* **`src/`** → *el motor* (toda la lógica de medir jitter, mezclar bits, health tests, etc.).
+* **`jitterentropy-base-user.h`** → *la “capa glue” de userland* (cómo leer el reloj de alta resolución, barreras, opciones de configuración).
+* **`arch/`** → *plantillas/ejemplos por arquitectura/plataforma* (cuando tu timer no encaja o quieres instrucciones específicas).
+* **`doc/`** → *documentación instalable* (man page).
+* **`tests/`** → *herramientas de test/validación* (p.ej. capturar “raw noise” para análisis tipo SP800-90B).
+
+### Qué hay en cada carpeta y por qué existe
+
+**`src/` (core de la librería)**
+Aquí está la implementación real del generador: el bucle que “amplifica” el jitter del CPU/timer, el acondicionamiento, las comprobaciones internas, etc. La idea es que *este código sea lo más agnóstico posible del sistema operativo* y dependa de “hooks” mínimos (tiempo, barreras, etc.) que le das desde los headers base. El propio historial menciona que el antiguo `jitterentropy-base.c` se fue “partiendo” en ficheros más pequeños, que suele ser justo para mantener mejor esa separación por módulos. ([GitHub][2])
+
+**`jitterentropy-base-user.h` (portabilidad en userland)**
+Este fichero es clave cuando estás en una VM Ubuntu: define cómo obtener tiempo de alta resolución (la función típica que el proyecto llama desde el core) y varios macros de configuración. Si en tu plataforma “no cuadra” esa función de tiempo, el README te dice explícitamente que puedes **sustituir este header por ejemplos de `arch/`**. ([GitHub][1])
+
+**`arch/` (arquitecturas / plataformas)**
+No es “otro core”: son *ejemplos y adaptaciones* para casos donde quieres usar instrucciones concretas o un origen de tiempo diferente (y también plantillas de build). El README pone un ejemplo directo: `arch/android/Android.mk` como plantilla para compilarlo en Android NDK. ([GitHub][1])
+
+**`doc/` (API en formato manpage)**
+Aquí está la documentación de la API en forma de man page (`jitterentropy.3`). El README remarca que **la API se documenta ahí**. ([GitHub][1])
+Si estás haciendo el estudio de entropía (OSR, min-entropy, heurísticas…), esa man page suele señalar funciones “safe”, parámetros y notas que conectan con SP800-90B.
+
+**`tests/` (tests y herramientas de evaluación)**
+El README avisa de algo importante: hay “muchos tests” pero **no todos caben en el repo oficial** y el autor los comparte aparte. ([GitHub][1])
+Aun así, en la documentación del autor se describen scripts concretos dentro de `tests/raw_entropy/recording_userspace` para recolectar ruido crudo (raw noise) y ejecutar baterías de prueba. ([Time - The final frontier][3])
+Esto encaja muy bien con tu objetivo de “estudio de entropía”: esa carpeta es normalmente el punto de partida para generar datos y luego calcular min-entropy por muestra / por “raw numbers”.
+
+### Ficheros “de entrada” que te interesan de verdad
+
+* **`README.md`**: guía de build y cómo elegir `arch/` si falla el timer. ([GitHub][1])
+* **`Makefile` / `CMakeLists.txt`**: dos formas de compilar e instalar (`make && make install` aparece en el README). ([GitHub][1])
+* **`jitterentropy.h`**: API pública (lo que usas desde tu programa). ([GitHub][1])
+* **`doc/jitterentropy.3`**: contrato de API + notas operativas (muy útil para no “usar mal” el RNG). ([GitHub][1])
+
+Si me dices qué quieres hacer exactamente primero (¿compilar la lib en tu Ubuntu VM, o ir directo a capturar raw entropy para calcular min-entropy/OSR?), te marco “el camino” por archivos con el orden de lectura y los comandos concretos.
+
+[1]: https://github.com/smuellerDD/jitterentropy-library "GitHub - smuellerDD/jitterentropy-library: Jitterentropy Library"
+[2]: https://github.com/smuellerDD/jitterentropy-library/blob/master/CHANGES.md?utm_source=chatgpt.com "jitterentropy-library/CHANGES.md at master"
+[3]: https://www.chronox.de/jent/?utm_source=chatgpt.com "Jitter RNG - Time - The final frontier"
+
+
+
+------------
+
+Vale, el repo impresiona porque mezcla **la librería “de producción”** con **un banco de pruebas completo** para validar entropía tipo \ac{SP800-90B}. La clave es separar mentalmente: *core del RNG* vs *herramientas para grabar y medir*.
+
+## 1) Mapa mental de la estructura del repo
+
+En `jitterentropy-library` (Mueller) normalmente verás:
+
+* **`src/`**: el *core* del Jitter RNG (lo que realmente genera bits). Aquí están las piezas de: medir jitter de tiempo, mezclar/condicionar, bucles de memoria/hash, health tests, etc. (La idea base: solo necesita un timestamp de alta resolución). ([GitHub][1])
+* **Headers (`jitterentropy.h`, `*-user.h`, etc.)**: API, flags (FIPS/NTG1), configuración, tamaños, y “heurística” (la famosa relación con OSR).
+* **`doc/` / manpage**: explicación de uso e integración. ([Arch Linux Manual Pages][2])
+* **`tests/raw-entropy/`**: lo que a ti te interesa para “paper-style entropy assessment”:
+
+  * `recording_userspace/`: programas/scripts para **grabar “raw noise”** (deltas de tiempo) en ficheros. ([GitHub][3])
+  * `validation-runtime/`: scripts para **calcular min-entropy (runtime)** con la herramienta NIST. ([GitHub][4])
+  * `validation-restart/`: lo mismo pero para **restart tests** (SP800-90B 3.1.4). ([GitHub][5])
+  * README “raíz” de `tests/raw-entropy/` con cómo interpretar `H_original`, `H_bitstring`, `H_r/H_c/H_I`, etc., y la heurística por defecto (1/3 bit por time-delta). ([GitHub][6])
+
+---
+
+## 2) Qué es exactamente el “raw number” y dónde entra **1/OSR**
+
+En estas herramientas, el “raw” típico es **un time-delta** (diferencia entre lecturas de timer) guardado como entero (normalmente 64-bit). Luego, para poder pasar \ac{SP800-90B}, se **extraen los bits “útiles”** (casi siempre en los 4–8 LSB), porque:
+
+* el jitter fino suele vivir ahí, y
+* la herramienta NIST que usan en estos scripts trabaja con alfabetos de hasta **8 bits** (1 byte por muestra). ([GitHub][4])
+
+La heurística de Jitter RNG se suele expresar como:
+
+* **min-entropy por time-delta ≈ 1/OSR** (en bits)
+  y por defecto usan algo equivalente a **OSR=3 → 1/3** bit por time-delta. ([GitHub][6])
+
+La validación que haces con los scripts busca confirmar: **tu medición SP800-90B da ≥ 1/OSR** para el “time-delta” (la muestra raw). ([GitHub][6])
+
+---
+
+## 3) Proceso paso a paso (desde 0) para medir min-entropy como en el “paper”
+
+### Paso 0 — Dependencias (Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install -y build-essential git python3 \
+  libbz2-dev libjsoncpp-dev libssl-dev libdivsufsort-dev \
+  libgmp-dev libmpfr-dev
+```
+
+### Paso 1 — Preparar la herramienta NIST SP800-90B (C++ binaries)
+
+En el repo de Mueller, los scripts esperan (por defecto) que el repo NIST esté dentro de `tests/raw-entropy/` y que existan los binarios `ea_non_iid` y `ea_restart` en `cpp/`. ([GitHub][7])
+
+Desde la raíz de `jitterentropy-library`:
+
+```bash
+cd tests/raw-entropy
+git clone https://github.com/usnistgov/SP800-90B_EntropyAssessment
+cd SP800-90B_EntropyAssessment/cpp
+make non_iid restart
+```
+
+(El `Makefile` oficial compila `ea_non_iid` y `ea_restart` así). ([GitHub][8])
+
+### Paso 2 — Grabar “raw noise” (runtime) y “restart data”
+
+Tienes dos formas: **script** o **manual**. La manual te ayuda a entender qué está pasando.
+
+#### Opción A (rápida): script estándar
+
+```bash
+cd ../../recording_userspace
+./invoke_testing.sh
+```
+
+Ese flujo es el recomendado por los README para recoger runtime+restart en `../results-measurements`. ([GitHub][3])
+
+#### Opción B (manual, clara): usar `jitterentropy-hashtime`
+
+Compila y genera datos:
+
+```bash
+cd tests/raw-entropy/recording_userspace
+make -f Makefile.hashtime
+mkdir -p ../results-measurements
+```
+
+**Runtime (1 fichero grande):**
+
+```bash
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips
+```
+
+**Restart (muchos ficheros; 1000 reinicios × 1000 muestras):**
+
+```bash
+./jitterentropy-hashtime 1000 1000 ../results-measurements/jent-raw-noise-restart --force-fips
+```
+
+El programa acepta flags para “tocar parámetros” (OSR, loop count, memoria, etc.). Están listados en el propio código: `--osr`, `--loopcnt`, `--max-mem`, `--disable-memory-access`, `--hashloop`, `--memaccess`, `--status`, etc. ([GitHub][9])
+
+### Paso 3 — Calcular min-entropy (runtime)
+
+```bash
+cd ../validation-runtime
+./processdata.sh
+```
+
+Qué ocurre por dentro:
+
+1. `extractlsb` extrae 4 y 8 LSB por defecto (`MASK_LIST="0F:4 FF:8"`) y genera streams en bytes. ([GitHub][4])
+2. llama a `ea_non_iid` (C++ NIST) para obtener min-entropy y te deja ficheros `*.minentropy_*`. ([GitHub][7])
+
+**Dónde mirar el número final**: en `results-analysis-runtime/jent-raw-noise-0001.minentropy_FF_8bits.var.txt` (al final) aparece el valor tipo `min(H_original, 8 X H_bitstring)` que el README interpreta como **entropía por time-delta**. ([GitHub][6])
+
+### Paso 4 — Calcular min-entropy (restart)
+
+```bash
+cd ../validation-restart
+./processdata.sh
+```
+
+Aquí se concatena todo y se llama a `ea_restart`. Verás `H_r`, `H_c` y `H_I` y el `min(H_r, H_c, H_I)` final. ([GitHub][10])
+
+---
+
+## 4) Cómo “tocar parámetros” y ver cómo cambia la entropía
+
+### (A) Cambiar OSR y comprobar el umbral 1/OSR
+
+Ejemplo: repetir runtime con OSR=4 y comparar:
+
+```bash
+cd ../recording_userspace
+make -f Makefile.hashtime
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips --osr 4
+```
+
+Luego vuelves a `validation-runtime/processdata.sh` y miras si el valor por time-delta sigue siendo ≥ 0.25 (porque 1/4). La relación 1/OSR es la que se usa como heurística/claim. ([GitHub][6])
+
+### (B) Cambiar “loop count” (cuánto trabajo se mete entre lecturas)
+
+```bash
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips --loopcnt 128
+```
+
+(La opción existe y afecta a la medición del/los noise source(s)). ([GitHub][9])
+
+### (C) Cambiar memoria (suele ser lo más importante si sale poca entropía)
+
+Puedes ajustar “max mem” en runtime:
+
+```bash
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips --max-mem 12
+```
+
+(12 corresponde a `JENT_MAX_MEMSIZE_2MB`, etc., según el parser). ([GitHub][9])
+
+Si quieres hacerlo “modo paper/industrial”: usa el barrido automático:
+
+1. Generar muchos datasets con distintas configs:
+
+```bash
+cd ../recording_userspace
+./analyze_options.sh
+```
+
+([GitHub][11])
+
+2. Analizarlos todos (runtime):
+
+```bash
+cd ../validation-runtime
+./analyze_options.sh
+```
+
+Te crea `../results-runtime-multi` con tabla de `min entropy` por combinación. ([GitHub][12])
+
+3. Analizarlos todos (restart):
+
+```bash
+cd ../validation-restart
+./analyze_options.sh
+```
+
+Te crea `../results-restart-multi`. ([GitHub][13])
+
+Luego eliges una configuración que funcione para **runtime y restart** (y ya la fijas vía flags tipo `JENT_MAX_MEMSIZE_*` en integración real). ([GitHub][6])
+
+---
+
+## 5) Dos detalles que suelen romper la primera vez
+
+1. **Máscara de bits (MASK_LIST)**: si los LSB salen constantes en tu CPU/VM, el propio `extractlsb` te lo chiva en el log y entonces cambias la máscara (por ejemplo, saltarte 2–3 LSB y coger bits “más arriba”). Esto está explicado con ejemplo en el README de `validation-runtime`. ([GitHub][4])
+
+2. **VM**: en máquinas virtuales a veces el timer y el scheduling te cambian el perfil (puede salir peor o raro). Si te sale “insuficiente”, el barrido de memoria (`analyze_options.sh`) suele ser el primer sitio donde se gana margen. ([GitHub][6])
+
+---
+
+Si quieres, en el siguiente mensaje me pegas:
+
+* el final de `results-analysis-runtime/...minentropy...txt` (las 5–10 últimas líneas), y
+* el log donde `extractlsb` te dice “Constant 0s/1s”,
+
+y te digo exactamente **qué máscara** usar y **qué parámetro** (OSR/mem/loopcnt) te está limitando.
+
+[1]: https://github.com/smuellerDD/jitterentropy-library?utm_source=chatgpt.com "smuellerDD/jitterentropy-library"
+[2]: https://man.archlinux.org/man/extra/jitterentropy/jitterentropy.3.en?utm_source=chatgpt.com "jitterentropy(3) - Arch manual pages"
+[3]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/recording_userspace/README.md "raw.githubusercontent.com"
+[4]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-runtime/README.md "raw.githubusercontent.com"
+[5]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-restart/README.md "raw.githubusercontent.com"
+[6]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/README.md "raw.githubusercontent.com"
+[7]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-runtime/processdata_helper.sh "raw.githubusercontent.com"
+[8]: https://raw.githubusercontent.com/usnistgov/SP800-90B_EntropyAssessment/master/cpp/Makefile "raw.githubusercontent.com"
+[9]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/recording_userspace/jitterentropy-hashtime.c "raw.githubusercontent.com"
+[10]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-restart/processdata.sh "raw.githubusercontent.com"
+[11]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/recording_userspace/analyze_options.sh "raw.githubusercontent.com"
+[12]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-runtime/analyze_options.sh "raw.githubusercontent.com"
+[13]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-restart/analyze_options.sh "raw.githubusercontent.com"
+
+
+
+---------------
+
+Vale, vamos a ponerlo en “modo receta”, sin jerga.
+
+Piensa que el paper hace **siempre lo mismo**:
+
+1. **Genera datos crudos** (“raw”): números que salen de medir *jitter* (normalmente **deltas de tiempo** entre lecturas del reloj).
+2. De esos números crudos se quedan con **algunos bits** (LSB) y los convierten a un fichero de “muestras” que la herramienta de NIST entiende.
+3. Pasan ese fichero por la herramienta NIST (*SP800-90B) y sale un número: **min-entropy**.
+4. Repiten cambiando parámetros (OSR, memoria, loops…) y miran cómo cambia la min-entropy.
+
+---
+
+## Qué es “min-entropy por raw bit” (en una frase)
+
+* Tienes una muestra cruda (un delta de tiempo).
+* Si de cada muestra te quedas con **k bits** (por ejemplo k=8), NIST te da cuánta entropía hay **por muestra** (entre 0 y k bits).
+* Entonces **entropía por raw bit = (entropía por muestra) / k**.
+
+Ejemplo: si NIST dice “3.2 bits de entropía por muestra” usando k=8 bits, entonces por raw bit es 3.2/8 = 0.4.
+
+---
+
+## OSR (por qué lo mencionan tanto)
+
+OSR = “Oversampling Rate”. Es una forma conservadora de decir:
+
+> “Asumo que cada muestra cruda aporta como máximo **1/OSR** bits de entropía”.
+
+* Si OSR=3 → reclamas ~0.333 bits por muestra (delta).
+* Si OSR sube (4, 8, 16…), **estás siendo más conservador**: exiges menos entropía por muestra, pero necesitas más muestras para juntar, por ejemplo, 256 bits.
+
+---
+
+## Paso a paso en Ubuntu (lo mínimo para ver un número)
+
+### 1) Compilar el generador de datos “raw”
+
+Desde la raíz del repo:
+
+```bash
+cd tests/raw-entropy/recording_userspace
+make -f Makefile.hashtime
+```
+
+Eso te crea un ejecutable tipo `jitterentropy-hashtime` (el nombre exacto lo verás con `ls`).
+
+### 2) Grabar un fichero de deltas (raw)
+
+Crea una carpeta de resultados y graba (por ejemplo 1.000.000 muestras):
+
+```bash
+mkdir -p ../results-measurements
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips
+```
+
+Qué significa lo importante:
+
+* `1000000` = cuántas muestras crudas quieres.
+* lo que sale es un fichero con números (deltas).
+
+### 3) Instalar/compilar la herramienta NIST (la que calcula min-entropy)
+
+Entra en `tests/raw-entropy` y clona/compila:
+
+```bash
+cd ..
+git clone https://github.com/usnistgov/SP800-90B_EntropyAssessment
+cd SP800-90B_EntropyAssessment/cpp
+make non_iid restart
+```
+
+Esto te crea binarios `ea_non_iid` y `ea_restart`.
+
+### 4) Calcular min-entropy (runtime)
+
+Vuelve a validación runtime y ejecuta el script:
+
+```bash
+cd ../../validation-runtime
+./processdata.sh
+```
+
+Qué hace este script (conceptualmente):
+
+* coge tu fichero raw
+* extrae bits (típicamente 4 y 8 LSB) → convierte a “muestras” de 4 o 8 bits
+* ejecuta `ea_non_iid` y guarda el resultado en `results-analysis-runtime/`
+
+### 5) Leer el número que te interesa
+
+Mira qué ficheros te ha creado:
+
+```bash
+ls -lah results-analysis-runtime
+```
+
+Busca algo tipo `*.minentropy_*_8bits*` y abre el `.txt`:
+
+```bash
+tail -n 40 results-analysis-runtime/*.minentropy*8bits*.txt
+```
+
+Ahí verás el valor final (min-entropy por muestra para k=8).
+Luego haces la cuenta: **(entropía por muestra) / 8 = entropía por raw bit**.
+
+---
+
+## “Vale, ¿y cómo cambio parámetros para ver cómo cambia la entropía?”
+
+La idea es: **regrabar raw con otros parámetros** y volver a correr `processdata.sh`.
+
+Los más típicos:
+
+### Cambiar OSR
+
+```bash
+cd ../recording_userspace
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips --osr 4
+```
+
+### Cambiar “loop count” (más/menos trabajo entre lecturas)
+
+```bash
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips --loopcnt 128
+```
+
+### Cambiar memoria (suele influir bastante)
+
+```bash
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise --force-fips --max-mem 12
+```
+
+Después vuelves a:
+
+```bash
+cd ../validation-runtime
+./processdata.sh
+```
+
+y comparas los `*.minentropy...txt`.
+
+---
+
+## Si te lo dejo “a prueba de líos”: 3 comandos y me pasas 2 salidas
+
+Ejecuta esto tal cual, y pega aquí la salida:
+
+1. Grabar raw:
+
+```bash
+cd tests/raw-entropy/recording_userspace
+make -f Makefile.hashtime
+mkdir -p ../results-measurements
+./jitterentropy-hashtime 200000 1 ../results-measurements/jent-raw-noise --force-fips
+```
+
+2. Validar:
+
+```bash
+cd ../validation-runtime
+./processdata.sh
+```
+
+3. Pegar esto:
+
+```bash
+ls results-analysis-runtime
+tail -n 60 results-analysis-runtime/*.minentropy*8bits*.txt
+```
+
+Con eso te digo: **qué número exacto estás mirando**, cómo sacar “por raw bit”, y qué parámetro tocar primero (OSR vs memoria vs máscara de bits) según lo que salga.
+---------------
+
+Sí: **OSR no es un número “mágico” fijo**, se elige en función de **la entropía real que te sale en tu sistema** (y con el mismo “clock source”/modo con el que luego vas a usar JEnt).
+
+### Qué significa OSR, en simple
+
+OSR (oversampling rate) es básicamente el factor que dice:
+
+> “Para estar seguro, asumo que cada muestra cruda (cada *time delta*) aporta solo **(1/\text{OSR})** bits de entropía, así que necesito **OSR muestras** para justificar 1 bit de entropía”.
+
+La propia manpage lo define como “amount of oversampling performed by the entropy collector”, y que puedes pasarlo en `jent_entropy_init_ex(osr, flags)` y `jent_entropy_collector_alloc(osr, flags)`. ([Arch Linux Man Pages][1])
+
+### Cómo “se determina” OSR en el proceso del paper
+
+El flujo correcto es:
+
+1. **Mides** la entropía del ruido crudo y obtienes un número **H** = *min-entropy por muestra cruda* (por *time-delta*), usando el análisis \ac{SP800-90B}. ([Arch Linux Man Pages][1])
+2. Con ese **H**, eliges un OSR que sea conservador. Una regla práctica (y bastante estándar en este contexto) es:
+   **(\text{OSR} \ge \lceil 1/H \rceil)**. ([untruth.org][2])
+
+Ejemplos rápidos:
+
+* Si te sale **H = 0.40** bits/muestra → (1/H = 2.5) → **OSR = 3**
+* Si te sale **H = 0.18** → (1/H \approx 5.56) → **OSR = 6**
+* Si te sale **H = 0.06** → (1/H \approx 16.7) → **OSR = 17** (ya empieza a ser “caro” en rendimiento)
+
+### La referencia de “0.333”
+
+En la documentación de la librería (manpage) se menciona que, al hacer el análisis \ac{SP800-90B}, **la tasa de entropía debe ser > 0.333** como “mínimo heurístico implícito” del Jitter RNG. ([Arch Linux Man Pages][1])
+Eso encaja con la intuición de **OSR≈3** (porque (1/3 \approx 0.333)).
+
+### Qué haces si te sale menos entropía de la esperada
+
+Tienes dos caminos (normalmente haces ambos):
+
+* **Subir OSR** (más conservador). La propia manpage incluso recomienda subir OSR cuando hay fallos de health tests, y `jent_read_entropy_safe()` llega a re-crear el collector subiendo OSR automáticamente. ([Arch Linux Man Pages][1])
+* **Ajustar parámetros del generador** (memoria/loops/timer) y volver a medir. La manpage también dice que si sale “insufficient entropy” uses las herramientas de test para encontrar “optimal settings”. ([Arch Linux Man Pages][1])
+
+### Lo más importante (para no volverte loco)
+
+* **OSR se decide con el H más bajo** que observes en tus pruebas (runtime y restart), porque tu claim tiene que aguantar el peor caso. ([Arch Linux Man Pages][1])
+* Haz la medición en el **mismo entorno objetivo** (una VM puede darte números raros o peores, y luego cambian en hardware real).
+
+Si me pegas **el valor final de H** que te escupe el script (runtime y restart), te calculo el OSR exacto que corresponde y te digo si estás en la zona “normal” (OSR~3–6) o si algo está limitando (timer demasiado tosco, memoria desactivada, etc.).
+
+[1]: https://man.archlinux.org/man/extra/jitterentropy/jitterentropy.3.en "jitterentropy(3) — Arch manual pages"
+[2]: https://www.untruth.org/~josh/sp80090b/What%20To%20Expect%20When%20You%27re%20Expecting%20%28to%20Evaluate%20JEnt%20Against%20SP%20800-90B%29%2020210727-3.pdf "Microsoft PowerPoint - What To Expect When You're Expecting (to Evaluate JEnt Against SP 800-90B) 20210727.pptx"
+---------------------
+
+Vale, aquí hay dos “mundos” dentro del repo, y por eso parece un caos:
+
+* **La librería** (lo que luego usarías desde C): el núcleo está repartido en ficheros `jitterentropy-*.c/.h` y `arch/` (implementaciones de timer por plataforma).
+* **El kit de evaluación SP800-90B** (lo que tú quieres ahora): está en `tests/raw-entropy/`, y a su vez se divide en:
+
+  * `recording_userspace/`: **graba ruido crudo** (time deltas) con `jitterentropy-hashtime` ([GitHub][1])
+  * `validation-runtime/`: calcula min-entropy “en runtime” con NIST EA (`ea_non_iid`) ([GitHub][2])
+  * `validation-restart/`: calcula min-entropy “restart” con NIST EA (`ea_restart`) ([GitHub][3])
+
+Y ahora, el proceso “como en el paper” (SP800-90B) para sacar **min-entropy** y de ahí decidir **OSR** (oversampling rate).
+
+---
+
+## 1) Preparación (una vez)
+
+En Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential git python3
+```
+
+Clona y compila el tool de NIST **en el sitio exacto que esperan los scripts** (`tests/raw-entropy/SP800-90B_EntropyAssessment/...`) ([GitHub][2]):
+
+```bash
+cd jitterentropy-library/tests/raw-entropy
+git clone https://github.com/usnistgov/SP800-90B_EntropyAssessment.git
+cd SP800-90B_EntropyAssessment/cpp
+make
+```
+
+Al final deberías tener binarios como:
+
+* `.../cpp/ea_non_iid`
+* `.../cpp/ea_restart` ([GitHub][2])
+
+---
+
+## 2) Grabar el ruido crudo (runtime y restart)
+
+Esto genera ficheros `.data` con time-deltas.
+
+```bash
+cd ../../recording_userspace
+make -f Makefile.hashtime
+```
+
+### Runtime dataset (1 millón de muestras, 1 “repeat”)
+
+```bash
+./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise
+```
+
+### Restart dataset (matriz: 1000 muestras × 1000 reinicios)
+
+```bash
+./jitterentropy-hashtime 1000 1000 ../results-measurements/jent-raw-noise-restart
+```
+
+(La sintaxis es `rounds repeats fileprefix`, y `--osr`, `--max-mem`, etc. son opciones extra) ([GitHub][1])
+
+---
+
+## 3) Calcular min-entropy (NIST EA)
+
+### Runtime analysis
+
+```bash
+cd ../validation-runtime
+./processdata.sh
+```
+
+### Restart analysis
+
+```bash
+cd ../validation-restart
+./processdata.sh
+```
+
+---
+
+## 4) Dónde mirar “el numerito bueno”
+
+### Runtime
+
+Abre:
+
+`tests/raw-entropy/results-analysis-runtime/jent-raw-noise-0001.minentropy_FF_8bits.var.txt`
+
+y busca la línea:
+
+`min(H_original, 8 X H_bitstring): <VALOR>`
+
+Ese `<VALOR>` es la **min-entropy por time-delta** (la métrica clave que usa el proyecto) ([GitHub][4]).
+
+### Restart
+
+Abre:
+
+`tests/raw-entropy/results-analysis-restart/jent-raw-noise-restart-consolidated.minentropy_FF_8bits.var.txt`
+
+y busca:
+
+`min(H_r, H_c, H_I): <VALOR>` ([GitHub][3])
+
+En estos tests se usa como referencia el umbral **0.333 bits** (la heurística del Jitter RNG) ([GitHub][5]).
+
+---
+
+## 5) Convertir eso a OSR (lo que tú quieres)
+
+La idea práctica es:
+
+* Toma el peor caso: `Hmin = min(H_runtime, H_restart)`.
+* El OSR “mínimo” razonable: `OSR* = ceil(1 / Hmin)`.
+
+Puedes calcularlo automático así:
+
+```bash
+cd ../  # estando en tests/raw-entropy/
+python3 - <<'PY'
+import math, re, pathlib
+
+def get_val(path, label):
+    t = pathlib.Path(path).read_text()
+    m = re.search(rf"{re.escape(label)}\s*:\s*([0-9.]+)", t)
+    if not m:
+        raise SystemExit(f"No encuentro '{label}' en {path}")
+    return float(m.group(1))
+
+Hr = get_val("results-analysis-runtime/jent-raw-noise-0001.minentropy_FF_8bits.var.txt",
+             "min(H_original, 8 X H_bitstring)")
+Hs = get_val("results-analysis-restart/jent-raw-noise-restart-consolidated.minentropy_FF_8bits.var.txt",
+             "min(H_r, H_c, H_I)")
+
+Hmin = min(Hr, Hs)
+osr = math.ceil(1.0 / Hmin)
+
+print("H_runtime =", Hr)
+print("H_restart =", Hs)
+print("Hmin      =", Hmin)
+print("OSR*      =", osr)
+PY
+```
+
+### Cómo encaja con la librería
+
+* `osr` es literalmente el **oversampling rate** que pasas a `jent_entropy_init_ex(osr, flags)` y a `jent_entropy_collector_alloc(osr, flags)` ([GitHub][5]).
+* Si pasas `osr=0`, usas el valor por defecto, y si pasas un valor “demasiado bajo”, se sube al mínimo interno automáticamente ([GitHub][5]).
+* La propia documentación del proyecto te dice que, para SP800-90B/FIPS, la tasa debe estar **por encima de 0.333** (la heurística mínima) ([GitHub][5]).
+
+En la práctica: normalmente “optimizar OSR” aquí significa **subirlo** si tu `Hmin` sale bajo (o ajustar memoria con flags), no bajarlo.
+
+---
+
+## Si te sale Hmin < 0.333 (muy típico en VMs)
+
+Tienes dos caminos:
+
+1. **Subir OSR** (más lento, pero te baja la “tasa asumida”).
+2. **Ajustar memoria/hashloop** para intentar subir la entropía medida (y mantener OSR por defecto). El propio repo trae scripts `analyze_options.sh` para barrer configuraciones. ([GitHub][5])
+
+---
+
+Si me pegas aquí las dos líneas exactas:
+
+* `min(H_original, 8 X H_bitstring): ...`
+* `min(H_r, H_c, H_I): ...`
+
+te digo el `OSR*` y qué haría yo (subir OSR vs tocar `--max-mem` / flags) en tu caso concreto.
+
+[1]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/recording_userspace/jitterentropy-hashtime.c "raw.githubusercontent.com"
+[2]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-runtime/processdata_helper.sh "raw.githubusercontent.com"
+[3]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/validation-runtime/README.md "raw.githubusercontent.com"
+[4]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/tests/raw-entropy/README.md "raw.githubusercontent.com"
+[5]: https://raw.githubusercontent.com/smuellerDD/jitterentropy-library/master/doc/jitterentropy.3 "raw.githubusercontent.com"
